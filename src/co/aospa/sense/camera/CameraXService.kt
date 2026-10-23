@@ -11,6 +11,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
@@ -51,7 +53,9 @@ class CameraXService(
     private var packedBuffer: ByteBuffer? = null
     private var rowBuffer: ByteArray? = null
     private val transformMatrix = Matrix()
-    private val transformPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val transformPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
+    }
     private var transformRotation = Int.MIN_VALUE
     private var surfaceProvider: Preview.SurfaceProvider? = null
     private var isBound = false
