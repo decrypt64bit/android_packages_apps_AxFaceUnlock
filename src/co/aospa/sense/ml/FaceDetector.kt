@@ -53,6 +53,8 @@ class FaceDetector(context: Context) : Loggable {
     private var gpuDelegate: Delegate? = null
     private var nnApiDelegate: NnApiDelegate? = null
     private val anchors: FloatArray by lazy { generateAnchors() }
+    private val regressors = Array(1) { Array(NUM_BOXES) { FloatArray(NUM_COORDS) } }
+    private val classifiers = Array(1) { Array(NUM_BOXES) { FloatArray(1) } }
     
     private val imageTensorProcessor = ImageProcessor.Builder()
         .add(ResizeOp(INPUT_SIZE, INPUT_SIZE, ResizeOp.ResizeMethod.BILINEAR))
@@ -94,9 +96,8 @@ class FaceDetector(context: Context) : Loggable {
         val processedImage = imageTensorProcessor.process(tensorImage)
         val inputBuffer = processedImage.buffer
 
-        val regressors = Array(1) { Array(NUM_BOXES) { FloatArray(NUM_COORDS) } }
-        val classifiers = Array(1) { Array(NUM_BOXES) { FloatArray(1) } }
-
+        val regressors = this.regressors
+        val classifiers = this.classifiers
         val outputs = mapOf(
             0 to regressors,
             1 to classifiers

@@ -61,9 +61,14 @@ class FaceRecognition(
         val similarity = stored.maxOf { storedEmbedding ->
             faceNet.cosineDistance(capturedEmbedding, storedEmbedding)
         }
-        
+
+        if (similarity <= THRESHOLD) {
+            logD("Recognition: sim=$similarity threshold=$THRESHOLD no match")
+            return@withContext Result(false, similarity, faceRect)
+        }
+
         val spoof = antiSpoof.detect(croppedFace)
-        val matched = similarity > THRESHOLD && !spoof.isSpoof
+        val matched = !spoof.isSpoof
 
         logD("Recognition: sim=$similarity threshold=$THRESHOLD matched=$matched spoof=${spoof.isSpoof}")
         Result(matched, similarity, faceRect, spoof)

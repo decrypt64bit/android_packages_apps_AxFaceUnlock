@@ -79,13 +79,13 @@ class FaceNetModel(context: Context) : Loggable {
         var mag2 = 0.0f
         var product = 0.0f
         for (i in x1.indices) {
-            mag1 += x1[i].pow(2)
-            mag2 += x2[i].pow(2)
-            product += x1[i] * x2[i]
+            val a = x1[i]
+            val b = x2[i]
+            mag1 += a * a
+            mag2 += b * b
+            product += a * b
         }
-        mag1 = sqrt(mag1)
-        mag2 = sqrt(mag2)
-        return product / (mag1 * mag2)
+        return product / (sqrt(mag1) * sqrt(mag2))
     }
 
     suspend fun compare(bitmap1: Bitmap, bitmap2: Bitmap): Float {

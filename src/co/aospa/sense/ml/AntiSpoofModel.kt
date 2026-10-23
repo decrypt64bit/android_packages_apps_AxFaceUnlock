@@ -115,51 +115,39 @@ class AntiSpoofModel(context: Context) : Loggable {
     }
 
     fun laplacian(bitmap: Bitmap): Int {
-        val laplace = arrayOf(intArrayOf(0, 1, 0), intArrayOf(1, -4, 1), intArrayOf(0, 1, 0))
-        val size = laplace.size
-        val img = convertGreyImg(bitmap)
-        val height = img.size
-        val width = img[0].size
+        val width = bitmap.width
+        val height = bitmap.height
+        if (width < 3 || height < 3) return 0
+
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        val grey = IntArray(pixels.size)
+        for (i in pixels.indices) {
+            val color = pixels[i]
+            val red = (color shr 16) and 0xFF
+            val green = (color shr 8) and 0xFF
+            val blue = color and 0xFF
+            grey[i] = (red * 0.3f + green * 0.59f + blue * 0.11f).toInt()
+        }
 
         var score = 0
-        for (x in 0 until height - size + 1) {
-            for (y in 0 until width - size + 1) {
-                var result = 0
-                for (i in 0 until size) {
-                    for (j in 0 until size) {
-                        result += (img[x + i][y + j] and 0xFF) * laplace[i][j]
-                    }
-                }
+        for (x in 0..height - 3) {
+            val top = x * width
+            val middle = (x + 1) * width
+            val bottom = (x + 2) * width
+            for (y in 0..width - 3) {
+                val result = grey[top + y + 1] +
+                        grey[middle + y] +
+                        grey[middle + y + 2] +
+                        grey[bottom + y + 1] -
+                        4 * grey[middle + y + 1]
                 if (result > LAPLACE_THRESHOLD) {
                     score++
                 }
             }
         }
         return score
-    }
-
-    private fun convertGreyImg(img: Bitmap): Array<IntArray> {
-        val width = img.width
-        val height = img.height
-        val pixels = IntArray(width * height)
-        img.getPixels(pixels, 0, width, 0, 0, width, height)
-        
-        val result = Array(height) { IntArray(width) }
-        val alpha = 0xFF shl 24
-        
-        for (i in 0 until height) {
-            for (j in 0 until width) {
-                val `val` = pixels[width * i + j]
-                val red = (`val` shr 16) and 0xFF
-                val green = (`val` shr 8) and 0xFF
-                val blue = `val` and 0xFF
-                
-                var grey = (red.toFloat() * 0.3 + green.toFloat() * 0.59 + blue.toFloat() * 0.11).toInt()
-                grey = alpha or (grey shl 16) or (grey shl 8) or grey
-                result[i][j] = grey
-            }
-        }
-        return result
     }
 
     fun close() {

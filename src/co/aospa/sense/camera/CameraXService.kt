@@ -8,7 +8,10 @@ package co.aospa.sense.camera
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
 import android.util.Size
@@ -43,6 +46,13 @@ class CameraXService(
     private val analyzerExecutor = Executors.newSingleThreadExecutor()
 
     private var frameBitmap: Bitmap? = null
+    private var transformedBitmap: Bitmap? = null
+    private var transformedCanvas: Canvas? = null
+    private var packedBuffer: ByteBuffer? = null
+    private var rowBuffer: ByteArray? = null
+    private val transformMatrix = Matrix()
+    private val transformPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private var transformRotation = Int.MIN_VALUE
     private var surfaceProvider: Preview.SurfaceProvider? = null
     private var isBound = false
 
@@ -194,46 +204,64 @@ class CameraXService(
              val buffer = plane.buffer
              buffer.rewind()
 
-             if (frameBitmap == null || 
-                 frameBitmap!!.width != width || 
-                 frameBitmap!!.height != height) {
-                 frameBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+             var src = frameBitmap
+             if (src == null || src.width != width || src.height != height) {
+                 src = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                 frameBitmap = src
+                 transformRotation = Int.MIN_VALUE
              }
 
-             if (rowStride == width * pixelStride) {
-                 frameBitmap!!.copyPixelsFromBuffer(buffer)
+             val rowBytes = width * pixelStride
+             if (rowStride == rowBytes) {
+                 src.copyPixelsFromBuffer(buffer)
              } else {
-                 val packedSize = width * height * pixelStride
-                 val packedBuffer = ByteBuffer.allocate(packedSize)
-                 val rowBuffer = ByteArray(width * pixelStride)
+                 val packedSize = rowBytes * height
+                 var packed = packedBuffer
+                 if (packed == null || packed.capacity() < packedSize) {
+                     packed = ByteBuffer.allocate(packedSize)
+                     packedBuffer = packed
+                 }
+                 packed.clear()
+
+                 var row = rowBuffer
+                 if (row == null || row.size < rowBytes) {
+                     row = ByteArray(rowBytes)
+                     rowBuffer = row
+                 }
+
                  for (y in 0 until height) {
                      buffer.position(y * rowStride)
-                     buffer.get(rowBuffer)
-                     packedBuffer.put(rowBuffer)
+                     buffer.get(row, 0, rowBytes)
+                     packed.put(row, 0, rowBytes)
                  }
-                 packedBuffer.rewind()
-                 frameBitmap!!.copyPixelsFromBuffer(packedBuffer)
+                 packed.rewind()
+                 src.copyPixelsFromBuffer(packed)
              }
 
             val rotation = image.imageInfo.rotationDegrees
-            val matrix = Matrix().apply {
-                postRotate(rotation.toFloat(), frameBitmap!!.width / 2f, frameBitmap!!.height / 2f)
-                postScale(-1f, 1f, frameBitmap!!.width / 2f, frameBitmap!!.height / 2f)
+            val rotatedWidth = if (rotation == 90 || rotation == 270) height else width
+            val rotatedHeight = if (rotation == 90 || rotation == 270) width else height
+
+            if (transformRotation != rotation) {
+                transformMatrix.reset()
+                transformMatrix.postRotate(rotation.toFloat(), width / 2f, height / 2f)
+                transformMatrix.postScale(-1f, 1f, width / 2f, height / 2f)
+
+                val bounds = RectF(0f, 0f, width.toFloat(), height.toFloat())
+                transformMatrix.mapRect(bounds)
+                transformMatrix.postTranslate(-bounds.left, -bounds.top)
+                transformRotation = rotation
             }
 
-            val rotatedWidth = if (rotation == 90 || rotation == 270) frameBitmap!!.height else frameBitmap!!.width
-            val rotatedHeight = if (rotation == 90 || rotation == 270) frameBitmap!!.width else frameBitmap!!.height
+            var dst = transformedBitmap
+            if (dst == null || dst.width != rotatedWidth || dst.height != rotatedHeight) {
+                dst = Bitmap.createBitmap(rotatedWidth, rotatedHeight, Bitmap.Config.ARGB_8888)
+                transformedBitmap = dst
+                transformedCanvas = Canvas(dst)
+            }
 
-            val transformed = Bitmap.createBitmap(
-                frameBitmap!!,
-                0, 0,
-                frameBitmap!!.width,
-                frameBitmap!!.height,
-                matrix,
-                false
-            )
-
-            callback?.onFrame(transformed)
+            transformedCanvas!!.drawBitmap(src, transformMatrix, transformPaint)
+            callback?.onFrame(dst!!)
         } catch (e: Exception) {
             logD("Frame processing error: ${e.message}")
         } finally {
@@ -251,6 +279,11 @@ class CameraXService(
             preview = null
             callback = null
             frameBitmap = null
+            transformedBitmap = null
+            transformedCanvas = null
+            packedBuffer = null
+            rowBuffer = null
+            transformRotation = Int.MIN_VALUE
             surfaceProvider = null
             try {
                 if (!analyzerExecutor.isShutdown) {
